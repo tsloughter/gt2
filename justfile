@@ -71,3 +71,7 @@ capture-pickup:
 # Capture the open tailgate and spilling cargo.
 capture-dump:
     flatpak run org.godotengine.Godot --path "{{project_dir}}" -- --capture-rear-dump
+
+# Collect the full route and capture the retained load inside the hopper.
+capture-hopper:
+    flatpak run org.godotengine.Godot --path "{{project_dir}}" -- --capture-hopper

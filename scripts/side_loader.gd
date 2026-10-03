@@ -18,7 +18,8 @@ const COUNTER_LIFT_ANGLE := 108.0
 const TIP_ANGLE := 14.0
 const PIECES_PER_CAN := 10
 const TAILGATE_OPEN_ANGLE := 102.0
-const CARGO_SETTLE_TIME := 1.15
+const CARGO_ENTRY_TIME := 1.05
+const HOPPER_FLOOR_Y := 2.40
 
 var truck
 var visual_root: Node3D
@@ -220,8 +221,8 @@ func _run_pickup(can) -> void:
 	tip.tween_property(grabber_pivot, "rotation:x", deg_to_rad(TIP_ANGLE), 0.62)
 	await tip.finished
 	_rattle.play()
-	_spawn_trash(can.dump_origin())
-	await get_tree().create_timer(0.62).timeout
+	# Keep the can tipped until every piece has entered the actual cavity.
+	await _spawn_trash(can.dump_origin()).finished
 
 	_set_phase("returning", "Returning the empty can")
 	var untilt := create_tween().set_parallel(true)
@@ -367,7 +368,7 @@ func _stop_hydraulics() -> void:
 	_hydraulics.stop()
 
 
-func _spawn_trash(origin: Vector3) -> void:
+func _spawn_trash(origin: Vector3) -> Tween:
 	var colors: Array[Color] = [
 		Color("#f1cf45"),
 		Color("#ef7c62"),
@@ -375,85 +376,68 @@ func _spawn_trash(origin: Vector3) -> void:
 		Color("#eee5d0"),
 		Color("#9bce68"),
 	]
-	var hopper_target: Vector3 = hopper.global_position if hopper != null else truck.global_position + Vector3.UP * 3.4
+	var collection := create_tween().set_parallel(true)
+	var first_slot := _cargo_pieces.size()
+	var local_origin := _cargo_root.to_local(origin)
 	for index in PIECES_PER_CAN:
-		var body := RigidBody3D.new()
-		body.name = "TrashPiece_%02d" % index
-		body.mass = 0.06
-		body.gravity_scale = 1.28
-		body.collision_layer = 2
-		body.collision_mask = 1
-		get_tree().current_scene.add_child(body)
-		body.global_position = origin + Vector3(
-			_rng.randf_range(-0.24, 0.24),
-			_rng.randf_range(-0.08, 0.30),
-			_rng.randf_range(-0.20, 0.20),
-		)
-
 		var size := Vector3(
-			_rng.randf_range(0.16, 0.34),
-			_rng.randf_range(0.12, 0.28),
-			_rng.randf_range(0.12, 0.30),
+			_rng.randf_range(0.20, 0.30),
+			0.22,
+			_rng.randf_range(0.18, 0.24),
 		)
-		var mesh := BoxMesh.new()
-		mesh.size = size
-		var mesh_instance := MeshInstance3D.new()
-		mesh_instance.mesh = mesh
-		var material := StandardMaterial3D.new()
-		material.albedo_color = colors[index % colors.size()]
-		material.roughness = 0.72
-		mesh_instance.material_override = material
-		body.add_child(mesh_instance)
-
-		var collision := CollisionShape3D.new()
-		var shape := BoxShape3D.new()
-		shape.size = size
-		collision.shape = shape
-		body.add_child(collision)
-
-		var toward_hopper: Vector3 = (hopper_target - body.global_position).normalized()
-		body.linear_velocity = toward_hopper * _rng.randf_range(1.2, 2.2) + Vector3(
-			_rng.randf_range(-0.7, 0.7),
-			_rng.randf_range(0.2, 1.0),
-			_rng.randf_range(-0.6, 0.6),
+		var piece := _create_trash_visual(size, colors[index % colors.size()])
+		piece.name = "HopperPiece_%02d" % (first_slot + index + 1)
+		_cargo_root.add_child(piece)
+		var start := local_origin + Vector3(
+			_rng.randf_range(-0.10, 0.10),
+			_rng.randf_range(0.0, 0.08),
+			_rng.randf_range(-0.08, 0.08),
 		)
-		body.angular_velocity = Vector3(
-			_rng.randf_range(-7.0, 7.0),
-			_rng.randf_range(-7.0, 7.0),
-			_rng.randf_range(-7.0, 7.0),
-		)
-
-		var settle_timer := Timer.new()
-		settle_timer.one_shot = true
-		settle_timer.wait_time = CARGO_SETTLE_TIME
-		settle_timer.timeout.connect(
-			_settle_trash_piece.bind(body, size, colors[index % colors.size()])
-		)
-		body.add_child(settle_timer)
-		settle_timer.start()
+		var landing := _cargo_slot(first_slot + index)
+		var yaw := _rng.randf_range(-0.15, 0.15)
+		piece.position = start
+		piece.visible = false
+		var delay := float(index) * 0.035
+		collection.tween_method(
+			_animate_trash_entry.bind(piece, start, landing, yaw),
+			0.0, 1.0, CARGO_ENTRY_TIME,
+		).set_delay(delay)
+		collection.tween_callback(_settle_trash_piece.bind(piece)).set_delay(delay + CARGO_ENTRY_TIME)
+	return collection
 
 
-func _settle_trash_piece(body: RigidBody3D, size: Vector3, color: Color) -> void:
-	if is_instance_valid(body):
-		body.queue_free()
-	if _cargo_root == null or not is_instance_valid(_cargo_root):
-		return
-
-	var piece := _create_trash_visual(size, color)
-	piece.name = "HopperPiece_%02d" % (_cargo_pieces.size() + 1)
-	_cargo_root.add_child(piece)
-	var slot := _cargo_pieces.size()
-	var row := slot / 12
-	piece.position = Vector3(
-		_rng.randf_range(0.08, 2.46),
-		3.61 + float(row) * 0.075,
-		_rng.randf_range(-0.72, 0.72),
+func _cargo_slot(index: int) -> Vector3:
+	# Thirty non-overlapping slots per layer; spread successive pieces across
+	# the floor. Two layers hold the route's sixty pieces entirely below the rim.
+	var cell := (index * 17) % 30
+	var layer := floori(float(index) / 30.0)
+	return Vector3(
+		0.18 + float(cell % 6) * 0.43,
+		HOPPER_FLOOR_Y + 0.11 + float(layer) * 0.22,
+		-0.60 + float(floori(float(cell) / 6.0)) * 0.30,
 	)
-	piece.rotation = Vector3(
-		_rng.randf_range(-0.35, 0.35),
-		_rng.randf_range(-PI, PI),
-		_rng.randf_range(-0.35, 0.35),
-	)
+
+
+func _animate_trash_entry(progress: float, piece: MeshInstance3D, start: Vector3, landing: Vector3, yaw: float) -> void:
+	piece.visible = true
+	var entry := Vector3(landing.x, hopper.position.y + 0.35, landing.z)
+	if progress < 0.55:
+		# Clear the rim before descending. Using the truck's frame keeps the
+		# same piece contained despite body lean or a different truck heading.
+		var travel := progress / 0.55
+		piece.position = start.bezier_interpolate(
+			start + Vector3.UP * 0.90, entry + Vector3.UP * 0.45, entry, travel,
+		)
+		piece.rotation = Vector3(0.0, yaw + TAU * (1.0 - travel), 0.0)
+	else:
+		var fall := (progress - 0.55) / 0.45
+		piece.position = entry.lerp(landing, fall * fall)
+		piece.rotation = Vector3(0.0, yaw, 0.0)
+
+
+func _settle_trash_piece(piece: MeshInstance3D) -> void:
+	# Retain the very same mesh that entered the opening, at its landing pose.
+	# Cargo travels with the truck; physics resumes only when it is rear-dumped.
 	_cargo_pieces.append(piece)
 	cargo_changed.emit(_cargo_pieces.size())
 

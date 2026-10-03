@@ -8,6 +8,7 @@ trash can, then saves a .blend file, exports a .glb, and renders three previews.
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
 
 import bpy
@@ -275,12 +276,24 @@ def build_truck(materials: dict[str, bpy.types.Material]) -> bpy.types.Object:
         cube(f"Side_Window_{suffix}", (-2.78, y, 2.65), (1.18, 0.055, 0.78), materials["glass"], bevel=0.10, parent=root)
         cube(f"Door_Handle_{suffix}", (-2.42, y * 1.015, 2.03), (0.28, 0.05, 0.07), materials["dark"], bevel=0.025, parent=root)
 
-    cube("Collection_Body", (1.10, 0.0, 2.08), (5.18, 2.58, 2.53), materials["green"], bevel=0.28, parent=root)
-    cube("Hopper_Top", (0.92, 0.0, 3.35), (4.55, 2.40, 0.25), materials["light_green"], bevel=0.11, parent=root)
+    # Build a hollow upper body: a solid box and a black roof decal cannot
+    # contain visible cargo. Coordinates here are Blender Z-up; Godot uses Y-up.
+    cube("Collection_Body", (1.10, 0.0, 1.5575), (5.18, 2.58, 1.485), materials["green"], bevel=0.12, parent=root)
+    for y, side in ((-1.18, "Passenger"), (1.18, "Driver")):
+        cube(f"Collection_Wall_{side}", (1.10, y, 2.77), (5.18, 0.22, 1.15), materials["green"], bevel=0.06, parent=root)
+    for x, end in ((-1.38, "Front"), (3.58, "Rear")):
+        cube(f"Collection_Wall_{end}", (x, 0.0, 2.77), (0.22, 2.36, 1.15), materials["green"], bevel=0.06, parent=root)
+    # Four roof panels surround the clear 2.85 x 1.82 opening. The floor is
+    # 1.15 m below its rim, with space for the complete six-can route inside.
+    cube("Hopper_Rim_Front", (-0.8175, 0.0, 3.425), (1.345, 2.58, 0.25), materials["light_green"], bevel=0.04, parent=root)
+    cube("Hopper_Rim_Rear", (3.1975, 0.0, 3.425), (0.985, 2.58, 0.25), materials["light_green"], bevel=0.04, parent=root)
+    for y, side in ((-1.10, "Passenger"), (1.10, "Driver")):
+        cube(f"Hopper_Rim_{side}", (1.28, y, 3.425), (2.85, 0.38, 0.25), materials["light_green"], bevel=0.04, parent=root)
+    cube("Hopper_Floor", (1.10, 0.0, 2.35), (4.74, 2.14, 0.10), materials["charcoal"], bevel=0.01, parent=root)
     cube("Rear_Tailgate", (3.74, 0.0, 2.08), (0.32, 2.44, 2.27), materials["light_green"], bevel=0.13, parent=root)
     cube("Safety_Stripe_Passenger", (0.98, -1.306, 1.54), (4.75, 0.055, 0.24), materials["yellow"], bevel=0.025, parent=root)
     cube("Safety_Stripe_Driver", (0.98, 1.306, 1.54), (4.75, 0.055, 0.24), materials["yellow"], bevel=0.025, parent=root)
-    cube("Hopper_Opening", (1.28, 0.0, 3.49), (2.85, 1.82, 0.12), materials["charcoal"], bevel=0.06, parent=root)
+    empty("Hopper_Opening", (1.28, 0.0, 3.55), parent=root)
 
     add_label("CLEAN CREW", "Passenger_Side_Label", (1.15, -1.335, 2.60), materials["cream"], size=0.38, parent=root)
 
@@ -488,12 +501,13 @@ def main() -> None:
     build_truck(materials)
     build_trash_can(materials)
     export_assets()
-    camera = add_preview_stage(materials)
-    configure_render()
-    render_previews(camera)
+    if "--skip-previews" not in sys.argv:
+        camera = add_preview_stage(materials)
+        configure_render()
+        render_previews(camera)
+        print(f"Rendered previews: {RENDER_DIR}")
     print(f"Saved Blender source: {BLEND_PATH}")
     print(f"Exported GLB: {GLB_PATH}")
-    print(f"Rendered previews: {RENDER_DIR}")
 
 
 if __name__ == "__main__":

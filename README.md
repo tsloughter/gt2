@@ -35,8 +35,10 @@ Driving controls:
 Pickup begins automatically after the truck is stopped beside a glowing can.
 The arm grabs, lifts, tips, empties, and returns the can without requiring any
 precision controls. Empty cans stay at the curb rather than disappearing. Each
-pickup adds ten visible pieces to the hopper counter. Stop and press the dump
-control to open the rear tailgate and spill the accumulated load.
+pickup sends ten pieces through the open hopper and settles them on its recessed
+floor, below the roof rim. The same pieces stay inside while driving; the hopper
+holds all sixty pieces from a complete route. Stop and press the dump control to
+open the rear tailgate and spill the accumulated load.
 
 Automated checks:
 

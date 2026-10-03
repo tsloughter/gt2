@@ -45,6 +45,8 @@ func _ready() -> void:
 		_run_rear_dump_smoke_test.call_deferred()
 	elif "--smoke-full-route" in arguments:
 		_run_full_route_smoke_test.call_deferred()
+	elif "--capture-hopper" in arguments:
+		_run_full_route_smoke_test.call_deferred()
 	elif "--smoke-pickup" in arguments:
 		_run_pickup_smoke_test.call_deferred()
 	elif "--capture-stage2" in arguments:
@@ -637,14 +639,16 @@ func _run_pickup_smoke_test() -> void:
 		push_error("Pickup smoke test failed: expected one empty can, found %d." % emptied_count)
 		get_tree().quit(1)
 		return
-	# Let temporary trash timers finish before ending the headless scene. This
-	# keeps the smoke-test shutdown clean as well as checking their cleanup path.
+	# Let the pickup chime finish before ending the headless scene.
 	await get_tree().create_timer(1.4).timeout
 	if _side_loader.cargo_piece_count() != 10:
 		push_error(
 			"Pickup smoke test failed: expected 10 hopper pieces, found %d." %
 			_side_loader.cargo_piece_count()
 		)
+		get_tree().quit(1)
+		return
+	if not _check_hopper_containment():
 		get_tree().quit(1)
 		return
 	print("Pickup smoke test passed: arm cycled, trash spawned, can returned, and controls unlocked.")
@@ -699,7 +703,8 @@ func _run_rear_dump_smoke_test() -> void:
 		return
 	for dumped_piece in get_tree().get_nodes_in_group("dumped_trash"):
 		dumped_piece.queue_free()
-	await get_tree().process_frame
+	# Give the audio mixer time to release the just-stopped rattle playback.
+	await get_tree().create_timer(0.2).timeout
 	print("Rear-dump smoke test passed: tailgate opened, 10 pieces spilled, hopper cleared, and tailgate closed.")
 	get_tree().quit()
 
@@ -708,13 +713,15 @@ func _run_full_route_smoke_test() -> void:
 	# Accelerate authored timings while still exercising every real tween, timer,
 	# state transition, can wrapper, counter update, and completion condition.
 	Engine.time_scale = 6.0
+	var capture := "--capture-hopper" in OS.get_cmdline_user_args()
 	var route_positions: Array[float] = [27.0, 15.0, 3.0, -9.0, -21.0, -31.0]
 	for index in route_positions.size():
 		_player_truck.position = Vector3(route_positions[index], 0.07, 1.42)
 		_player_truck.rotation.y = 0.0
 		_player_truck.current_speed = 0.0
 		var expected_count := index + 1
-		var deadline_msec := Time.get_ticks_msec() + 4_000
+		# Software-rendered previews can run much slower than headless tests.
+		var deadline_msec := Time.get_ticks_msec() + (30_000 if capture else 4_000)
 		while _side_loader.collected_count < expected_count and Time.get_ticks_msec() < deadline_msec:
 			await get_tree().process_frame
 		if _side_loader.collected_count != expected_count:
@@ -742,9 +749,79 @@ func _run_full_route_smoke_test() -> void:
 		)
 		get_tree().quit(1)
 		return
+	if not _check_hopper_containment():
+		get_tree().quit(1)
+		return
+	# Exercise the loaded truck rather than merely checking the counter. Every
+	# retained mesh must move with the truck and keep its interior landing pose.
+	var cargo := _side_loader.visual_root.get_node("HopperCargo") as Node3D
+	var stored_poses: Dictionary = {}
+	for piece: Node3D in cargo.get_children():
+		stored_poses[piece] = piece.transform
+	var start_position: Vector3 = _player_truck.global_position
+	_player_truck.set_test_input(-1.0, 0.32)
+	for _frame in 90:
+		await get_tree().physics_frame
+	_player_truck.set_test_input(0.0, 0.0, true)
+	for _frame in 30:
+		await get_tree().physics_frame
+	_player_truck.clear_test_input()
+	if start_position.distance_to(_player_truck.global_position) < 1.0:
+		push_error("Hopper test failed: loaded truck did not drive.")
+		get_tree().quit(1)
+		return
+	for piece: Node3D in stored_poses:
+		if not is_instance_valid(piece) or piece.get_parent() != cargo or not piece.transform.is_equal_approx(stored_poses[piece]):
+			push_error("Hopper test failed: cargo was replaced, lost, or moved while driving.")
+			get_tree().quit(1)
+			return
+	if not _check_hopper_containment():
+		get_tree().quit(1)
+		return
 	await get_tree().create_timer(1.5).timeout
-	print("Full-route smoke test passed: all six cans were emptied and route completion was reached.")
+	if capture:
+		_player_truck.position = Vector3(6.0, 0.07, 1.42)
+		_player_truck.rotation = Vector3.ZERO
+		var camera := get_viewport().get_camera_3d()
+		camera.snap_to_target()
+		for _frame in 4:
+			await get_tree().process_frame
+		var screenshot := get_viewport().get_texture().get_image()
+		var path := ProjectSettings.globalize_path("res://renders/loaded_hopper.png")
+		if screenshot.save_png(path) != OK:
+			push_error("Could not save loaded hopper preview.")
+			get_tree().quit(1)
+			return
+		print("Saved loaded hopper preview: %s" % path)
+	print("Full-route smoke test passed: all 60 pieces remain inside the recessed hopper after driving and steering.")
 	get_tree().quit()
+
+
+func _check_hopper_containment() -> bool:
+	var model: Node3D = _side_loader.visual_root
+	var floor_mesh := model.get_node_or_null("Hopper_Floor") as MeshInstance3D
+	if floor_mesh == null or _side_loader.hopper is MeshInstance3D:
+		push_error("Hopper test failed: model has no recessed floor or still has a solid opening plate.")
+		return false
+	var floor_bounds: AABB = floor_mesh.transform * floor_mesh.get_aabb()
+	var rim_y: float = _side_loader.hopper.position.y
+	if rim_y - floor_bounds.end.y < 0.8:
+		push_error("Hopper test failed: cavity is too shallow for the load.")
+		return false
+	var cargo := model.get_node("HopperCargo") as Node3D
+	if cargo.get_child_count() != _side_loader.cargo_piece_count():
+		push_error("Hopper test failed: visible pieces and cargo counter differ.")
+		return false
+	for piece: MeshInstance3D in cargo.get_children():
+		var local_transform := model.global_transform.affine_inverse() * piece.global_transform
+		var bounds: AABB = local_transform * piece.get_aabb()
+		if bounds.position.y < floor_bounds.end.y - 0.002 or bounds.end.y > rim_y - 0.3:
+			push_error("Hopper test failed: %s is below the floor or above the rim." % piece.name)
+			return false
+		if bounds.position.x < -0.145 or bounds.end.x > 2.705 or bounds.position.z < -0.91 or bounds.end.z > 0.91:
+			push_error("Hopper test failed: %s is outside the opening." % piece.name)
+			return false
+	return true
 
 
 func _run_driving_smoke_test() -> void:
