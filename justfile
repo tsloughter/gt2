@@ -36,6 +36,10 @@ assets:
 test-driving:
     flatpak run org.godotengine.Godot --headless --path "{{project_dir}}" -- --smoke-driving
 
+# Check both trucks leaving either road end and respawning only out of view.
+test-road-exit:
+    flatpak run org.godotengine.Godot --headless --path "{{project_dir}}" --script res://scripts/test_road_exit.gd
+
 # Check one complete side-loader pickup cycle.
 test-pickup:
     flatpak run org.godotengine.Godot --headless --path "{{project_dir}}" -- --smoke-pickup
@@ -48,12 +52,31 @@ test-route:
 test-dump:
     flatpak run org.godotengine.Godot --headless --path "{{project_dir}}" -- --smoke-dump
 
+# Check the full front-loader route, fork alignment, and rear unloading.
+test-front-route:
+    flatpak run org.godotengine.Godot --headless --path "{{project_dir}}" -- --smoke-front-route
+
+# Check both menu choices, route restart, and returning to level selection.
+test-menu:
+    flatpak run org.godotengine.Godot --headless --path "{{project_dir}}" -- --smoke-menu
+
+# Capture the opening level chooser.
+capture-menu:
+    flatpak run org.godotengine.Godot --path "{{project_dir}}" -- --capture-menu
+
+# Capture the front loader tipping a dumpster over the cab.
+capture-front:
+    flatpak run org.godotengine.Godot --path "{{project_dir}}" -- --capture-front
+
 # Run all automated smoke tests.
 test:
     just test-driving
+    just test-road-exit
     just test-pickup
     just test-route
     just test-dump
+    just test-front-route
+    just test-menu
 
 # Build the project and run all automated smoke tests.
 check:

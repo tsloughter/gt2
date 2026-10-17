@@ -2,7 +2,16 @@
 
 **Made with Codex, use at your own risk**
 
-A first playable, child-friendly garbage-truck route built with Godot and Blender.
+A child-friendly garbage-truck game built with Godot and Blender.
+
+The opening screen lets players choose between two routes using the mouse,
+keyboard arrows and Enter, or gamepad D-pad and A:
+
+- **Side loader — Neighborhood:** collect six blue residential cans with the side arm.
+- **Front loader — Market Lane:** collect three green dumpsters outside the shops.
+  Drive straight toward a dumpster and stop with it between the front forks.
+  The forks align, lift the dumpster over the cab, tip it into the hopper, and
+  return it to its parking pad.
 
 ## Build stages
 
@@ -10,6 +19,7 @@ A first playable, child-friendly garbage-truck route built with Godot and Blende
 2. **Arcade driving and follow camera** — complete
 3. **Can detection and animated side-loader pickup** — complete
 4. **Loose trash, sound, feedback, and toddler-friendly polish** — complete
+5. **Level selection and front-loader dumpster route** — complete
 
 Play the project:
 
@@ -30,14 +40,21 @@ Driving controls:
 - Gamepad A / B / X — forward, reverse, and stop
 - `E`, `Enter`, or gamepad Y — start pickup immediately when aligned
 - `F` or gamepad right shoulder — dump the hopper while stopped
-- `R` or gamepad Start — restart the route
+- `R` or gamepad Start — restart the current route
+- `Esc`, gamepad Back / Select, or the **Choose level** button — return to level selection
 
-Pickup begins automatically after the truck is stopped beside a glowing can.
+Both trucks can drive forward or reverse off either end of the road and fall
+into the surrounding blue. The camera stays at road level. Once the whole truck
+falls out of view, it returns to its starting position, stopped and facing down
+the road. Collected trash and route progress are preserved.
+
+Pickup begins automatically after the truck is stopped beside a glowing can
+or aligned in front of a dumpster.
 The arm grabs, lifts, tips, empties, and returns the can without requiring any
 precision controls. Empty cans stay at the curb rather than disappearing. Each
 pickup sends ten pieces through the open hopper and settles them on its recessed
 floor, below the roof rim. The same pieces stay inside while driving; the hopper
-holds all sixty pieces from a complete route. Stop and press the dump control to
+holds all sixty pieces from the neighborhood or thirty from Market Lane. Stop and press the dump control to
 open the rear tailgate and spill the accumulated load.
 
 Automated checks:
@@ -47,8 +64,13 @@ just test
 ```
 
 Run an individual check with `just test-driving`, `just test-pickup`,
-`just test-route`, or `just test-dump`. Use `just build` to import and validate
-the Godot resources, or `just check` to build and then run all four checks.
+`just test-road-exit`, `just test-route`, `just test-dump`, `just test-front-route`, or `just test-menu`.
+Use `just build` to import and validate
+the Godot resources, or `just check` to build and then run all seven checks.
+
+Use `just capture-menu` and `just capture-front` to save previews of the level
+chooser and overhead dumpster pickup. The front forks, dumpsters, and market
+scenery are built in Godot; regenerating the Blender model is not required.
 
 ## Generate the first model set
 

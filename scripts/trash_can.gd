@@ -3,6 +3,8 @@ extends Node3D
 
 ## A reusable wrapper around the imported residential-can model.
 
+var container_group := "collectible_cans"
+var marker_height := 1.82
 var emptied := false
 var visual_root: Node3D
 var lid_pivot: Node3D
@@ -18,7 +20,7 @@ func configure(can_visual: Node3D) -> void:
 	lid_pivot = can_visual.find_child("ResidentialCan_LidPivot", true, false) as Node3D
 	home_parent = get_parent()
 	home_transform = global_transform
-	add_to_group("collectible_cans")
+	add_to_group(container_group)
 	_build_marker()
 
 
@@ -26,7 +28,7 @@ func _process(delta: float) -> void:
 	if _marker == null or not _marker.visible:
 		return
 	_marker_time += delta
-	_marker.position.y = 1.82 + sin(_marker_time * 4.2) * 0.11
+	_marker.position.y = marker_height + sin(_marker_time * 4.2) * 0.11
 	_marker.rotation.y += delta * 1.8
 
 
@@ -86,7 +88,7 @@ func _build_marker() -> void:
 	mesh.height = 0.34
 	mesh.radial_segments = 4
 	_marker.mesh = mesh
-	_marker.position = Vector3(0.0, 1.82, 0.0)
+	_marker.position = Vector3(0.0, marker_height, 0.0)
 	_marker.rotation_degrees.z = 180.0
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.albedo_color = Color("#ffd84d")

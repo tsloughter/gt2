@@ -1,7 +1,12 @@
 extends Node3D
 
-## Stage 1: static neighborhood blockout.
-## Driving, collision, and collection behavior intentionally begin in Stage 2.
+## Residential route and shared route scenery, HUD, and smoke checks.
+
+signal restart_requested
+signal menu_requested
+
+var route_title := "Side loader · Neighborhood"
+var container_label := "CANS"
 
 const ASSET_SET := preload("res://assets/models/little_clean_crew.glb")
 const TRUCK_CONTROLLER := preload("res://scripts/truck_controller.gd")
@@ -19,7 +24,6 @@ var _speed_label: Label
 var _status_label: Label
 var _counter_label: Label
 var _side_loader
-var _restart_was_pressed := false
 var _displayed_collected := 0
 var _displayed_total := 6
 var _displayed_cargo := 0
@@ -58,12 +62,26 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _speed_label != null and _player_truck != null:
 		_speed_label.text = "%02d\nkm/h" % roundi(_player_truck.speed_kph())
-	var restart_pressed := Input.is_key_pressed(KEY_R)
-	for joypad_id in Input.get_connected_joypads():
-		restart_pressed = restart_pressed or Input.is_joy_button_pressed(joypad_id, JOY_BUTTON_START)
-	if restart_pressed and not _restart_was_pressed:
-		get_tree().reload_current_scene()
-	_restart_was_pressed = restart_pressed
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# B is reverse while driving, so do not use ui_cancel (which maps to B).
+	var keyboard := event as InputEventKey
+	var gamepad := event as InputEventJoypadButton
+	if keyboard != null and keyboard.pressed and not keyboard.echo:
+		if keyboard.keycode == KEY_ESCAPE:
+			menu_requested.emit()
+			get_viewport().set_input_as_handled()
+		elif keyboard.keycode == KEY_R:
+			restart_requested.emit()
+			get_viewport().set_input_as_handled()
+	elif gamepad != null and gamepad.pressed:
+		if gamepad.button_index == JOY_BUTTON_BACK:
+			menu_requested.emit()
+			get_viewport().set_input_as_handled()
+		elif gamepad.button_index == JOY_BUTTON_START:
+			restart_requested.emit()
+			get_viewport().set_input_as_handled()
 
 
 func _create_materials() -> void:
@@ -357,7 +375,7 @@ func _build_stage_label() -> void:
 	canvas.add_child(panel)
 
 	var label := Label.new()
-	label.text = "LITTLE CLEAN CREW\nFirst playable route"
+	label.text = "LITTLE CLEAN CREW\n" + route_title
 	label.add_theme_font_size_override("font_size", 21)
 	label.add_theme_color_override("font_color", Color("#fff1c7"))
 	panel.add_child(label)
@@ -385,8 +403,8 @@ func _build_stage_label() -> void:
 	speed_panel.add_child(_speed_label)
 
 	var counter_panel := PanelContainer.new()
-	counter_panel.position = Vector2(1075.0, 132.0)
-	counter_panel.custom_minimum_size = Vector2(177.0, 72.0)
+	counter_panel.position = Vector2(1020.0, 132.0)
+	counter_panel.custom_minimum_size = Vector2(232.0, 72.0)
 	counter_panel.add_theme_stylebox_override("panel", speed_style)
 	canvas.add_child(counter_panel)
 	_counter_label = Label.new()
@@ -412,11 +430,19 @@ func _build_stage_label() -> void:
 	controls_panel.add_theme_stylebox_override("panel", controls_style)
 	canvas.add_child(controls_panel)
 	_status_label = Label.new()
-	_status_label.text = "Drive beside a blue can\nWASD / arrows drive · E / Y picks up · F / RB dumps"
+	_status_label.text = _side_loader.approach_message + "\nWASD / arrows drive · E / Y picks up · F / RB dumps"
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_label.add_theme_font_size_override("font_size", 16)
 	_status_label.add_theme_color_override("font_color", Color("#fff1c7"))
 	controls_panel.add_child(_status_label)
+
+	var menu_button := Button.new()
+	menu_button.text = "Choose level  ·  Esc"
+	menu_button.position = Vector2(26.0, 126.0)
+	menu_button.custom_minimum_size = Vector2(238.0, 44.0)
+	menu_button.add_theme_font_size_override("font_size", 18)
+	menu_button.pressed.connect(func() -> void: menu_requested.emit())
+	canvas.add_child(menu_button)
 
 
 func _on_collection_status_changed(message: String) -> void:
@@ -442,7 +468,8 @@ func _on_cargo_changed(pieces: int) -> void:
 
 func _refresh_counter_label() -> void:
 	if _counter_label != null:
-		_counter_label.text = "CANS  %d / %d\nHOPPER  %d PIECES" % [
+		_counter_label.text = "%s  %d / %d\nHOPPER  %d PIECES" % [
+			container_label,
 			_displayed_collected,
 			_displayed_total,
 			_displayed_cargo,

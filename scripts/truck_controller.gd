@@ -1,6 +1,8 @@
 class_name TruckController
 extends CharacterBody3D
 
+signal respawned
+
 ## Forgiving arcade driving for a young player.
 ## The truck points down its local -X axis in the imported Blender model.
 
@@ -17,8 +19,9 @@ const WHEEL_ROLL_AXIS := Vector3.UP
 @export var active_braking := 12.0
 @export var steering_rate := 0.92
 @export var heading_assist := 0.72
-@export var road_min_x := -35.0
-@export var road_max_x := 35.0
+@export var gravity := 18.0
+@export var road_min_x := -38.0
+@export var road_max_x := 38.0
 @export var road_min_z := -3.55
 @export var road_max_z := 3.55
 
@@ -33,9 +36,12 @@ var _test_brake := false
 var _engine_audio: AudioStreamPlayer3D
 var _reverse_beep: AudioStreamPlayer3D
 var _reverse_beep_timer := 0.0
+var _spawn_transform: Transform3D
+var _is_falling := false
 
 
 func _ready() -> void:
+	_spawn_transform = global_transform
 	_setup_audio()
 
 
@@ -72,11 +78,15 @@ func speed_kph() -> float:
 
 func _physics_process(delta: float) -> void:
 	var controls := _read_controls()
-	_apply_speed(controls.x, controls.z > 0.5, delta)
-	_apply_steering(controls.y, delta)
+	# Once the wheels leave the road, carry the existing momentum through the
+	# fall. Braking or reversing in midair cannot bring the truck back up.
+	if not _is_falling:
+		_apply_speed(controls.x, controls.z > 0.5, delta)
+		_apply_steering(controls.y, delta)
 	_move_truck(delta)
 	_animate_visuals(controls.y, delta)
 	_update_audio(delta)
+	_respawn_if_offscreen()
 
 
 func _read_controls() -> Vector3:
@@ -147,14 +157,57 @@ func _apply_steering(steering: float, delta: float) -> void:
 
 func _move_truck(delta: float) -> void:
 	var forward := -global_transform.basis.x.normalized()
-	velocity = forward * current_speed
+	velocity.x = forward.x * current_speed
+	velocity.z = forward.z * current_speed
+	velocity.y -= gravity * delta
 	move_and_slide()
+	if not is_on_floor() and (global_position.x < road_min_x or global_position.x > road_max_x):
+		_is_falling = true
 
 	var before_clamp := global_position
-	global_position.x = clampf(global_position.x, road_min_x, road_max_x)
 	global_position.z = clampf(global_position.z, road_min_z, road_max_z)
 	if not global_position.is_equal_approx(before_clamp):
 		current_speed = move_toward(current_speed, 0.0, active_braking * delta * 2.0)
+
+
+func _respawn_if_offscreen() -> void:
+	if controls_locked or not _is_falling:
+		return
+	var camera := get_viewport().get_camera_3d()
+	if camera == null or is_model_in_view(camera):
+		return
+	global_transform = _spawn_transform
+	current_speed = 0.0
+	velocity = Vector3.ZERO
+	_is_falling = false
+	_visual_root.rotation.x = 0.0
+	_reverse_beep.stop()
+	_reverse_beep_timer = 0.0
+	respawned.emit()
+
+
+func is_model_in_view(camera: Camera3D) -> bool:
+	# Test every mesh, including the front forks and retained cargo. Checking
+	# only the truck origin would make the tail disappear while still on screen.
+	var planes := camera.get_frustum()
+	for child in find_children("*", "MeshInstance3D", true, false):
+		var mesh := child as MeshInstance3D
+		if not mesh.is_visible_in_tree() or mesh.mesh == null:
+			continue
+		var bounds := mesh.get_aabb()
+		var outside := false
+		for plane in planes:
+			var all_outside := true
+			for corner in 8:
+				if not plane.is_point_over(mesh.global_transform * bounds.get_endpoint(corner)):
+					all_outside = false
+					break
+			if all_outside:
+				outside = true
+				break
+		if not outside:
+			return true
+	return false
 
 
 func _animate_visuals(steering: float, delta: float) -> void:

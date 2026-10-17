@@ -21,6 +21,11 @@ const TAILGATE_OPEN_ANGLE := 102.0
 const CARGO_ENTRY_TIME := 1.05
 const HOPPER_FLOOR_Y := 2.40
 
+var container_group := "collectible_cans"
+var approach_message := "Drive beside a blue can"
+var slow_message := "Slow down beside the glowing can"
+var ready_message := "Arm ready"
+
 var truck
 var visual_root: Node3D
 var lift_pivot: Node3D
@@ -76,7 +81,7 @@ func configure(truck_controller, truck_visual: Node3D) -> void:
 
 
 func _refresh_total() -> void:
-	total_count = get_tree().get_nodes_in_group("collectible_cans").size()
+	total_count = get_tree().get_nodes_in_group(container_group).size()
 	count_changed.emit(collected_count, total_count)
 
 
@@ -110,17 +115,17 @@ func _process(delta: float) -> void:
 
 	if _target_can == null:
 		_auto_timer = 0.0
-		_set_status("Drive beside a blue can")
+		_set_status(approach_message)
 		return
 
 	if absf(truck.current_speed) > STOPPED_SPEED:
 		_auto_timer = 0.0
-		_set_status("Slow down beside the glowing can")
+		_set_status(slow_message)
 		return
 
 	_auto_timer += delta
 	var progress := clampf(_auto_timer / AUTO_PICKUP_DELAY, 0.0, 1.0)
-	_set_status("Arm ready… %d%%   •   E / ENTER / Y" % roundi(progress * 100.0))
+	_set_status("%s… %d%%   •   E / ENTER / Y" % [ready_message, roundi(progress * 100.0)])
 	if _auto_timer >= AUTO_PICKUP_DELAY or manual_just_pressed:
 		var can_to_collect = _target_can
 		_set_target(null)
@@ -130,7 +135,7 @@ func _process(delta: float) -> void:
 func _find_best_can():
 	var best_can = null
 	var best_score := INF
-	for candidate in get_tree().get_nodes_in_group("collectible_cans"):
+	for candidate in get_tree().get_nodes_in_group(container_group):
 		if candidate.emptied:
 			continue
 		var local_position: Vector3 = truck.to_local(candidate.global_position)

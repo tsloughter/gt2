@@ -12,17 +12,25 @@ extends Camera3D
 
 var target: Node3D
 var _smoothed_aim := Vector3.ZERO
+var _road_min_x := -INF
+var _road_max_x := INF
+var _road_height := -INF
 
 
 func attach_to(target_node: Node3D) -> void:
 	target = target_node
+	if target is TruckController:
+		_road_min_x = target.road_min_x
+		_road_max_x = target.road_max_x
+		_road_height = target.global_position.y
+		target.respawned.connect(snap_to_target)
 	snap_to_target()
 
 
 func snap_to_target() -> void:
 	if target == null or not is_inside_tree():
 		return
-	global_position = target.global_position + world_offset
+	global_position = _follow_position() + world_offset
 	_smoothed_aim = _desired_aim()
 	look_at(_smoothed_aim, Vector3.UP)
 
@@ -30,7 +38,7 @@ func snap_to_target() -> void:
 func _process(delta: float) -> void:
 	if target == null:
 		return
-	var desired_position := target.global_position + world_offset
+	var desired_position := _follow_position() + world_offset
 	global_position = global_position.lerp(
 		desired_position,
 		1.0 - exp(-position_smoothing * delta),
@@ -44,5 +52,12 @@ func _process(delta: float) -> void:
 
 func _desired_aim() -> Vector3:
 	var forward := -target.global_transform.basis.x.normalized()
-	return target.global_position + Vector3.UP * look_height + forward * look_ahead
+	return _follow_position() + Vector3.UP * look_height + forward * look_ahead
 
+
+func _follow_position() -> Vector3:
+	# Stay above the road while the truck falls into the surrounding blue.
+	var position_on_road := target.global_position
+	position_on_road.x = clampf(position_on_road.x, _road_min_x, _road_max_x)
+	position_on_road.y = maxf(position_on_road.y, _road_height)
+	return position_on_road
