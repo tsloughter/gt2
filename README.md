@@ -4,6 +4,24 @@
 
 A child-friendly garbage-truck game built with Godot and Blender.
 
+## License
+
+Copyright (c) 2026 Little Clean Crew contributors.
+
+Little Clean Crew's source code, documentation, and original assets are licensed
+under the GNU Affero General Public License, version 3 or (at your option) any
+later version (`AGPL-3.0-or-later`). See [LICENSE.txt](LICENSE.txt) for the full
+license text. The project is provided without warranty.
+
+This game uses Godot Engine, which is licensed separately under the MIT license.
+See [Godot's license and third-party notices](https://godotengine.org/license/).
+When distributing an exported game, include `LICENSE.txt`, this license notice,
+and the corresponding project source, along with the applicable Godot and
+third-party notices described in
+[Godot's license compliance guide](https://docs.godotengine.org/en/stable/about/complying_with_licenses.html).
+
+## Game
+
 The opening screen lets players choose between two routes using the mouse,
 keyboard arrows and Enter, or gamepad D-pad and A:
 

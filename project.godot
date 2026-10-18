@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="Little Clean Crew"
+config/description="A child-friendly garbage-truck game. Licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later); see LICENSE.txt. Uses Godot Engine under the MIT license: https://godotengine.org/license/"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
